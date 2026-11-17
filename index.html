@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>ScriptBreaker · 视频分镜拆解台</title>
+<meta name="description" content="纯前端视频分镜拆解：浏览器内抽帧、切镜、调用多模态大模型生成分镜头脚本，导出 Markdown / CSV / JSON。" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%230a0c11'/%3E%3Cpath d='M30 32h40M30 50h26M30 68h34' stroke='%235fd0ff' stroke-width='9' stroke-linecap='round'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">SB</div>
+    <div class="brand-txt">
+      <h1>ScriptBreaker</h1>
+      <p>视频 → 分镜头脚本 · 纯前端运行</p>
+    </div>
+  </div>
+
+  <div class="quick">
+    <div class="select-wrap">
+      <label for="model-quick-select" class="sr">模型</label>
+      <select id="model-quick-select" title="切换模型">
+        <option value="deepseek">DeepSeek-V4.1-Flash（视觉）</option>
+        <option value="openai">OpenAI 兼容（自定义）</option>
+        <option value="anthropic">Anthropic Claude</option>
+        <option value="ollama">本地 Ollama</option>
+      </select>
+    </div>
+    <span id="model-badge" class="badge">vision</span>
+    <button id="btn-settings" class="btn ghost" type="button">模型设置</button>
+  </div>
+</header>
+
+<div id="key-warning" class="warn-banner" hidden>
+  <span>⚠️ <strong>演示密钥</strong>：当前使用内置临时 Key，仅供试用。公开部署前请替换为你自己的 Key —— 前端明文密钥会被任何人看到。</span>
+  <button id="key-warning-close" class="link" type="button">知道了</button>
+</div>
+
+<main class="workspace">
+  <!-- ================= 左栏 ================= -->
+  <aside class="panel video-panel">
+    <div class="section-head">
+      <h2><span class="step-no">1</span>视频源</h2>
+      <span id="video-meta" class="meta">未加载</span>
+    </div>
+
+    <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="选择视频文件">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2.5" y="5" width="19" height="14" rx="3"/>
+        <path d="M10 9.5l5 2.5-5 2.5z" fill="currentColor" stroke="none"/>
+      </svg>
+      <p class="dz-title">拖入视频，或点击选择</p>
+      <p class="dz-sub">mp4 / webm / mov · 在本机解码，不上传</p>
+      <input type="file" id="video-upload" accept="video/*" hidden />
+    </div>
+
+    <div class="url-row">
+      <input id="video-url" type="url" placeholder="或粘贴视频直链 https://…" />
+      <button id="btn-load-url" class="btn small" type="button">载入</button>
+    </div>
+    <p class="hint">跨域直链可能无法取帧（画布污染），失败时请下载后上传本地文件。</p>
+
+    <video id="player" controls playsinline preload="metadata" hidden></video>
+
+    <div class="divider"></div>
+
+    <div class="section-head">
+      <h2><span class="step-no">2</span>字幕 <span id="sub-status" class="meta">0 条</span></h2>
+      <button id="btn-toggle-sub" class="link" type="button">展开</button>
+    </div>
+    <div id="sub-wrap" hidden>
+      <p class="hint">粘贴烧录字幕或 SRT。有字幕时台词以字幕为准；没有才让模型看图猜。</p>
+      <textarea id="subtitle-input" rows="6" placeholder="00:00:02 孩子都七个月了&#10;00:00:04 你俩离婚才半年&#10;…&#10;&#10;也支持 SRT：&#10;1&#10;00:00:02,000 --> 00:00:04,000&#10;孩子都七个月了"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button id="btn-parse-sub" class="btn small" type="button">解析字幕</button>
+        <span class="hint">解析结果会按时间自动挂到镜头上</span>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="section-head"><h2><span class="step-no">3</span>拆解参数</h2></div>
+    <div class="field-grid">
+      <label>采样间隔
+        <select id="sample-interval">
+          <option value="auto" selected>自动（按时长）</option>
+          <option value="1">1 秒</option>
+          <option value="2">2 秒</option>
+          <option value="3">3 秒</option>
+        </select>
+      </label>
+      <label>每批帧数
+        <select id="frames-per-batch">
+          <option value="4">4 帧</option>
+          <option value="6" selected>6 帧</option>
+          <option value="8">8 帧</option>
+        </select>
+      </label>
+    </div>
+    <label class="check"><input type="checkbox" id="merge-short" checked /> 合并 &lt; 0.8 秒的碎片镜头</label>
+
+    <div class="tips" id="tips">
+      <p class="tips-title">上手提示</p>
+      <ul>
+        <li><b>本地文件最稳</b>：直链常因跨域取不到帧</li>
+        <li><b>有字幕就贴</b>：台词准确率会明显提升</li>
+        <li><b>运镜与音效是推断</b>：模型只看得到关键帧</li>
+      </ul>
+    </div>
+
+    <div id="progress" class="progress" hidden>
+      <div class="phase-row" id="phase-row">
+        <span class="phase" data-phase="detect">切镜</span>
+        <span class="phase" data-phase="capture">抽帧</span>
+        <span class="phase" data-phase="analyze">分析</span>
+      </div>
+      <div class="bar"><i id="progress-bar"></i></div>
+      <p id="progress-text" class="meta">准备中…</p>
+    </div>
+
+    <div class="actions">
+      <button id="btn-run" class="btn primary" type="button" disabled>开始拆解</button>
+      <button id="btn-cancel" class="btn" type="button" hidden>停止</button>
+    </div>
+
+    <div id="log" class="log"></div>
+  </aside>
+
+  <!-- ================= 右栏 ================= -->
+  <section class="panel script-panel">
+    <div class="toolbar-bar">
+      <div class="toolbar-top">
+        <div class="title-block">
+          <h2>分镜头脚本</h2>
+          <span id="shot-count" class="count-pill">0</span>
+        </div>
+        <div class="toolbar-actions">
+          <button id="btn-demo" class="btn ghost small" type="button">演示数据</button>
+          <div class="seg">
+            <button id="btn-export-md" type="button">Markdown</button>
+            <button id="btn-export-csv" type="button">CSV</button>
+            <button id="btn-export-json" type="button">JSON</button>
+          </div>
+          <button id="btn-qc" class="btn small" type="button">质检</button>
+          <button id="btn-preview" class="btn small" type="button">预览</button>
+        </div>
+      </div>
+
+      <div class="filter-row">
+        <div class="seg" id="filter-seg">
+          <button data-filter="all" class="on" type="button">全部</button>
+          <button data-filter="dialogue" type="button">有台词</button>
+          <button data-filter="nothumb" type="button">无画面</button>
+        </div>
+        <div class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input id="search-input" type="text" placeholder="搜索画面 / 台词…" />
+        </div>
+        <div class="stats" id="stats"></div>
+      </div>
+    </div>
+
+    <div id="sel-bar" class="sel-bar" hidden>
+      <span class="sel-count">已选 <b id="sel-n">0</b></span>
+      <button id="btn-merge" class="btn small" type="button">合并</button>
+      <button id="btn-split" class="btn small" type="button">在播放头拆分</button>
+      <button id="btn-batch" class="btn small" type="button">批量补字段</button>
+      <button id="btn-del" class="btn small danger" type="button">删除</button>
+      <button id="btn-sel-clear" class="link" type="button">取消选择</button>
+    </div>
+
+    <div id="empty-state" class="empty">
+      <div class="empty-art">🎬</div>
+      <h3>还没有分镜</h3>
+      <p>左侧载入视频后点「开始拆解」。没有素材？点「演示数据」直接看效果。</p>
+      <div class="empty-steps">
+        <span class="empty-step"><i>1</i>载入视频</span>
+        <span class="empty-step"><i>2</i>自动切镜抽帧</span>
+        <span class="empty-step"><i>3</i>模型生成分镜</span>
+        <span class="empty-step"><i>4</i>导出脚本</span>
+      </div>
+    </div>
+
+    <div id="storyboard-list" class="grid-container" hidden></div>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>ScriptBreaker · 纯静态 · 可直接部署到 GitHub Pages</span>
+  <span class="dot">·</span>
+  <button id="btn-help" class="link" type="button">方法论与格式</button>
+  <span class="dot">·</span>
+  <span>视频只在本机浏览器解码，不会上传</span>
+</footer>
+
+<!-- ================= 设置抽屉 ================= -->
+<div id="settings-drawer" class="drawer" hidden>
+  <div class="drawer-mask" data-close></div>
+  <div class="drawer-body">
+    <div class="drawer-head">
+      <h2>模型设置</h2>
+      <button class="icon" data-close type="button">✕</button>
+    </div>
+    <p class="drawer-sub">配置只保存在本机 localStorage。公开部署不要把真实 Key 写进代码。</p>
+
+    <label class="field">服务商
+      <select id="cfg-provider">
+        <option value="deepseek">DeepSeek（官方）</option>
+        <option value="openai">OpenAI 兼容接口</option>
+        <option value="anthropic">Anthropic</option>
+        <option value="ollama">Ollama（本地）</option>
+      </select>
+    </label>
+
+    <label class="field">Base URL
+      <input id="cfg-baseurl" type="text" spellcheck="false" />
+    </label>
+    <label class="field">模型名称
+      <input id="cfg-model" type="text" spellcheck="false" list="model-presets" />
+      <datalist id="model-presets">
+        <option value="deepseek-flash">DeepSeek-V4.1-Flash（视觉）</option>
+        <option value="deepseek-v4-pro">DeepSeek-V4-Pro（纯文本）</option>
+        <option value="gpt-4o-mini"></option>
+        <option value="claude-3-5-sonnet-latest"></option>
+        <option value="qwen2.5-vl:7b"></option>
+      </datalist>
+    </label>
+    <label class="field">API Key
+      <input id="cfg-apikey" type="password" spellcheck="false" autocomplete="off" placeholder="sk-…" />
+    </label>
+    <div class="row">
+      <label class="field grow">温度
+        <input id="cfg-temp" type="number" step="0.1" min="0" max="2" />
+      </label>
+      <label class="field grow">最大输出 tokens
+        <input id="cfg-maxtok" type="number" step="256" min="256" max="32768" />
+      </label>
+    </div>
+    <label class="field">推理档位（DeepSeek）
+      <select id="cfg-effort">
+        <option value="high" selected>high（默认）</option>
+        <option value="max">max（最细，慢）</option>
+        <option value="low">low（最快）</option>
+        <option value="">不传</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="cfg-vision" checked /> 该模型支持图像输入（关闭则只做文本拆解）</label>
+
+    <div class="drawer-actions">
+      <button id="btn-save-cfg" class="btn primary" type="button">保存</button>
+      <button id="btn-reset-cfg" class="btn" type="button">恢复默认</button>
+      <button id="btn-test-cfg" class="btn" type="button">测试连通性</button>
+    </div>
+    <p id="cfg-test-out" class="hint"></p>
+  </div>
+</div>
+
+<!-- ================= 预览 / 帮助 ================= -->
+<div id="modal" class="modal" hidden>
+  <div class="modal-mask" data-close></div>
+  <div class="modal-body">
+    <div class="drawer-head">
+      <h2 id="modal-title">预览</h2>
+      <button class="icon" data-close type="button">✕</button>
+    </div>
+    <div id="modal-content" class="modal-content"></div>
+    <div class="drawer-actions">
+      <button id="btn-copy" class="btn" type="button">复制到剪贴板</button>
+      <button id="btn-download-last" class="btn primary" type="button">下载</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 批量补字段 ================= -->
+<div id="batch-modal" class="modal" hidden>
+  <div class="modal-mask" data-close></div>
+  <div class="modal-body small">
+    <div class="drawer-head">
+      <h2>批量补字段</h2>
+      <button class="icon" data-close type="button">✕</button>
+    </div>
+    <p class="drawer-sub">只应用你填写的字段；勾选「仅填空」时不会覆盖已有内容。</p>
+    <label class="field">运镜
+      <input id="batch-camera" type="text" placeholder="例如：中景 · 固定机位 · 平视" />
+    </label>
+    <label class="field">声音
+      <input id="batch-audio" type="text" placeholder="例如：雨声、脚步、无 BGM" />
+    </label>
+    <label class="check"><input type="checkbox" id="batch-only-empty" checked /> 仅填空字段</label>
+    <div class="drawer-actions">
+      <button id="btn-batch-apply" class="btn primary" type="button">应用到选中镜头</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 大图 ================= -->
+<div id="lightbox" class="lightbox" hidden>
+  <img id="lightbox-img" alt="镜头大图" />
+  <div class="lb-cap" id="lightbox-cap"></div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="assets/config.local.js" onerror="this.remove()"></script>
+<script type="module" src="assets/app.js"></script>
+</body>
+</html>
