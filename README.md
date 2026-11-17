@@ -33,6 +33,26 @@
 
 ---
 
+## 1.5 桌面版（Windows）
+
+团队直接用这个，不用装浏览器插件，也没有跨域限制：
+
+- 免安装：`ScriptBreaker 1.0.0.exe`
+- 安装版：`ScriptBreaker Setup 1.0.0.exe`（可选目录、创建桌面/开始菜单快捷方式）
+
+下载：https://github.com/ZHIXIAO-XJY/zhixiao-baiyexing/releases/tag/v1.0.0
+
+首次运行 Windows 会提示“未知发布者”（未做代码签名），点「更多信息 → 仍要运行」即可。
+
+桌面版内置团队默认配置（代理 + 口令），打开即用；如果所在网络访问不了 `workers.dev`，按顶部提示一键切官方接口，粘贴一次团队 Key 即可。
+
+自己打包：
+
+```bash
+npm install
+npm run dist        # 产物在 dist/，含 nsis 安装包与免安装 exe
+```
+
 ## 2. 快速开始
 
 ### 本地
