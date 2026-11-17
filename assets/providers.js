@@ -80,6 +80,7 @@ export async function chat(cfg, messages, signal) {
   const isAnthropic = cfg.provider === 'anthropic';
 
   const headers = { 'Content-Type': 'application/json' };
+  if (cfg.passcode) headers['X-SB-Code'] = cfg.passcode;
   let body;
 
   if (isAnthropic) {
@@ -129,6 +130,21 @@ export async function chat(cfg, messages, signal) {
 }
 
 /** 连通性测试：发一句最短的话 */
+/** 探测代理是否可达（只发 OPTIONS，不花钱） */
+export async function probeProxy(cfg, timeoutMs = 2500) {
+  const base = normalizeBase(cfg.base_url).replace(/\/v1$/, '');
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(base, { method: 'OPTIONS', signal: ctrl.signal });
+    return res.ok || res.status === 204;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function testConnection(cfg) {
   const t0 = performance.now();
   const { text, raw } = await chat(cfg, [

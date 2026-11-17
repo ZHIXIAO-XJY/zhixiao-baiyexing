@@ -7,6 +7,7 @@
  * 环境变量（wrangler secret / API 写入）：
  *   DEEPSEEK_KEY   必填，sk- 开头
  *   ALLOW_ORIGIN   可选，逗号分隔，默认 https://zhixiao-xjy.github.io
+ *   PASSCODE       可选，访问口令（请求头 X-SB-Code）；不设则不校验
  */
 
 const UPSTREAM = 'https://api.deepseek.com/v1/chat/completions';
@@ -30,7 +31,7 @@ function corsHeaders(origin, allowed) {
     ok,
     headers: {
       'Access-Control-Allow-Origin': ok ? origin : allowed[0] || DEFAULT_ORIGIN,
-      'Access-Control-Allow-Headers': 'content-type, authorization',
+      'Access-Control-Allow-Headers': 'content-type, authorization, x-sb-code',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
       'Access-Control-Max-Age': '86400',
       Vary: 'Origin'
@@ -64,6 +65,12 @@ export default {
     if (!ok) return json(403, { error: `Origin ${origin || '(none)'} 不在白名单` });
 
     if (!env.DEEPSEEK_KEY) return json(500, { error: '服务端未配置 DEEPSEEK_KEY' });
+
+    // 口令门槛：只防脚本白嫖，不是强安全（前端可见）
+    if (env.PASSCODE) {
+      const code = request.headers.get('x-sb-code') || new URL(request.url).searchParams.get('code') || '';
+      if (code !== env.PASSCODE) return json(401, { error: '口令不对' });
+    }
 
     const len = Number(request.headers.get('content-length') || 0);
     if (len > MAX_BODY) return json(413, { error: '请求体过大' });

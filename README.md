@@ -95,9 +95,15 @@ OpenAI 兼容只需填 Base URL + 模型名，Anthropic 走 `x-api-key` + `anthr
 2. **线上访客**：在「模型设置」里自己填 Key（存本机 `localStorage`）。
 3. **公开演示站**（推荐）：用一个 Cloudflare Worker 代理，Key 放服务端环境变量。
 
-   本站已部署一份：`https://scriptbreaker-proxy.805352942.workers.dev`，在「模型设置」里点 **「用本站代理」** 即填好（Base URL 带 `/v1`，API Key 填 `proxy` 即可）。
+   本站已部署一份：`https://scriptbreaker-proxy.805352942.workers.dev`（口令 `白夜行`）。在「模型设置」里点 **「用本站代理」** 即填好（Base URL 带 `/v1`、API Key 填 `proxy`、口令自动填）。
 
-   > ⚠️ `*.workers.dev` 在中国大陆被 DNS 污染，直连不通；国内访客需要绑自有域名，或把 `worker/worker.js` 部署到国内可访问的环境。详见 `worker/README.md`。
+   > ⚠️ `*.workers.dev` 在中国大陆被 DNS 污染，直连不通。应用启动时会探测一次：
+> - 通 → 直接用代理，零配置；
+> - 不通 → 顶部弹出提示，一键「切到官方接口」，粘贴一次自己的 Key 即可（`api.deepseek.com` 国内直连可用）。
+>
+> 想让代理在国内也可用，需要给 Worker 绑自有域名，或把 `worker/worker.js` 部署到国内环境。详见 `worker/README.md`。
+
+   口令（`PASSCODE`）只防脚本白嫖：它在静态代码里可见，不构成强安全。要更严就改成只有你知道的值，并在设置里同步。
 
 
 ```js

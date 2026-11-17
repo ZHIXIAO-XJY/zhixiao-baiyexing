@@ -24,15 +24,19 @@ export const DEFAULT_MODEL_CONFIG = {
   temperature: 0.3,
   max_tokens: 8192,
   effort: 'high',
-  vision: true
+  vision: true,
+  passcode: ''
 };
 
 export const PROXY_PRESET = {
   label: '本站代理（无需自备 Key）',
   base_url: 'https://scriptbreaker-proxy.805352942.workers.dev/v1',
   model_name: 'deepseek-flash',
-  vision: true
+  vision: true,
+  passcode: '白夜行'   // 口令只防脚本白嫖，前端可见，想更严就改 secret
 };
+
+export const OFFICIAL_BASE = 'https://api.deepseek.com/v1';
 
 export const PROVIDER_PRESETS = {
   deepseek: {

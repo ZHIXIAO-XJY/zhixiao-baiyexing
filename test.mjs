@@ -1,7 +1,7 @@
 import { buildShots, fmtTime, pickInterval } from './assets/cv.js';
 import { parseShotJSON, parseSubtitles, attachSubtitles, buildBatchMessages } from './assets/prompt.js';
 import { toMarkdown, toCSV, toJSON, hasExt } from './assets/exporter.js';
-import { endpointFor, normalizeBase } from './assets/providers.js';
+import { endpointFor, normalizeBase, chat } from './assets/providers.js';
 import { renumber, mergeShots, splitShot, deleteShots, qcShots, autoFix } from './assets/qc.js';
 import { parseSummaryJSON, hasExtras, buildSummaryMessages } from './assets/summary.js';
 
@@ -104,6 +104,19 @@ ok('质检发现空字段', qcShots(empty).some(i => i.msg.includes('运镜')));
 
 const fixed = autoFix([mk(1, 0, 12), mk(2, 10, 20)]);
 ok('自动修复重叠', fixed[1].start === fixed[0].end);
+
+console.log('\n[providers request]');
+let captured = null;
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url, init) => {
+  captured = { url, headers: init.headers, body: JSON.parse(init.body) };
+  return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }], usage: { total_tokens: 1 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+};
+await chat({ provider: 'deepseek', base_url: 'https://scriptbreaker-proxy.example/v1', model_name: 'deepseek-flash', api_key: 'proxy', passcode: '白夜行', effort: 'high', max_tokens: 64 }, [{ role: 'user', content: 'hi' }]);
+ok('请求带口令头', captured.headers['X-SB-Code'] === '白夜行');
+ok('请求带 effort', captured.body.effort === 'high');
+ok('请求走 /chat/completions', captured.url.endsWith('/v1/chat/completions'));
+globalThis.fetch = realFetch;
 
 console.log('\n[summary]');
 const sumText = '```json\n{"title":"夜巷认亲","characters":[{"name":"霍征","role":"男主","profile":"短发","tone":"低沉"}],"structure":[{"start":"00:00","end":"01:36","phase":"钩子","note":"认亲"}],"notes":["让外说惨"]}\n```';

@@ -39,6 +39,12 @@
   <button id="key-warning-close" class="link" type="button">知道了</button>
 </div>
 
+<div id="net-tip" class="warn-banner" hidden>
+  <span>⚠️ <strong>本站代理在当前网络不可达</strong>（国内访问 workers.dev 常见）。改用官方接口 + 自己的 Key 更稳，只需粘贴一次。</span>
+  <button id="btn-fallback" class="link" type="button">切到官方接口</button>
+  <button id="net-tip-close" class="link" type="button">知道了</button>
+</div>
+
 <main class="workspace">
   <!-- ================= 左栏 ================= -->
   <aside class="panel video-panel">
@@ -261,6 +267,9 @@
         <option value="low">low（最快）</option>
         <option value="">不传</option>
       </select>
+    </label>
+    <label class="field">访问口令（用本站代理时需要）
+      <input id="cfg-passcode" type="text" spellcheck="false" placeholder="例如：白夜行" />
     </label>
     <label class="check"><input type="checkbox" id="cfg-vision" checked /> 该模型支持图像输入（关闭则只做文本拆解）</label>
 

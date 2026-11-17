@@ -1,9 +1,9 @@
 /**
  * app.js — ScriptBreaker 主逻辑
  */
-import { DEFAULT_MODEL_CONFIG, PROVIDER_PRESETS, PROXY_PRESET, DEMO_KEY } from './config.js';
+import { DEFAULT_MODEL_CONFIG, PROVIDER_PRESETS, PROXY_PRESET, OFFICIAL_BASE, DEMO_KEY } from './config.js';
 import { probe, detectCuts, buildShots, captureThumbs, pickInterval, seekTo, fmtShort, fmtTime } from './cv.js';
-import { chat, testConnection } from './providers.js';
+import { chat, testConnection, probeProxy } from './providers.js';
 import { buildBatchMessages, parseShotJSON, parseSubtitles, attachSubtitles } from './prompt.js';
 import { toMarkdown, toCSV, toJSON, download, hasExt } from './exporter.js';
 import { mergeShots, splitShot, deleteShots, qcShots, autoFix, renumber } from './qc.js';
@@ -95,6 +95,7 @@ function fillSettingsForm() {
   $('#cfg-maxtok').value = c.max_tokens;
   $('#cfg-effort').value = c.effort || '';
   $('#cfg-vision').checked = !!c.vision;
+  $('#cfg-passcode').value = c.passcode || '';
 }
 
 function readSettingsForm() {
@@ -106,7 +107,8 @@ function readSettingsForm() {
     temperature: Number($('#cfg-temp').value) || 0.3,
     max_tokens: Number($('#cfg-maxtok').value) || 4096,
     effort: $('#cfg-effort').value,
-    vision: $('#cfg-vision').checked
+    vision: $('#cfg-vision').checked,
+    passcode: $('#cfg-passcode').value.trim()
   };
 }
 
@@ -899,6 +901,21 @@ function bindSettings() {
   const close = () => { $('#settings-drawer').hidden = true; };
 
   $('#btn-settings').addEventListener('click', open);
+
+  const fallback = $('#btn-fallback');
+  if (fallback) {
+    fallback.addEventListener('click', () => {
+      state.cfg = { ...state.cfg, base_url: OFFICIAL_BASE, model_name: 'deepseek-flash', api_key: '', passcode: '' };
+      saveConfig();
+      syncModelBadge();
+      $('#net-tip').hidden = true;
+      fillSettingsForm();
+      $('#settings-drawer').hidden = false;
+      toast('已切到官方接口，填自己的 Key 即可');
+    });
+  }
+  const tipClose = $('#net-tip-close');
+  if (tipClose) tipClose.addEventListener('click', () => { $('#net-tip').hidden = true; });
   $('#key-warning-close').addEventListener('click', () => { $('#key-warning').hidden = true; });
   document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', () => {
     close();
@@ -930,6 +947,7 @@ function bindSettings() {
     $('#cfg-baseurl').value = PROXY_PRESET.base_url;
     $('#cfg-model').value = PROXY_PRESET.model_name;
     $('#cfg-apikey').value = 'proxy';
+    $('#cfg-passcode').value = PROXY_PRESET.passcode || '';
     $('#cfg-vision').checked = true;
     $('#cfg-effort').value = 'high';
     toast('已填入本站代理，点「保存」生效');
@@ -1123,6 +1141,16 @@ function boot() {
   window.addEventListener('offline', () => toast('网络已断开，模型调用不可用', true));
 
   log('就绪。加载视频 → 点「开始拆解」。没有 Key 可先点「演示数据」看界面。');
+
+  // 用的是本站代理？探测一下可达性，不通就给一条「切官方接口」的退路
+  if ((state.cfg.base_url || '').includes('workers.dev')) {
+    probeProxy(state.cfg).then((ok) => {
+      if (!ok) {
+        $('#net-tip').hidden = false;
+        log('本站代理当前网络不可达，可点顶部提示切到官方接口', 'err');
+      }
+    });
+  }
 
   const qs = new URLSearchParams(location.search);
   if (qs.get('demo') === '1' || location.hash === '#demo') loadDemo();
