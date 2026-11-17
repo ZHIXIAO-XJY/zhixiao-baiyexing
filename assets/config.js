@@ -13,10 +13,10 @@ const LOCAL = (typeof window !== 'undefined' && window.SB_LOCAL_CONFIG) || {};
 export const DEFAULT_MODEL_CONFIG = {
   provider: 'deepseek',
   // 端点：OpenAI-compatible。DeepSeek 官方 v1 根路径即可，代码会自动补 /chat/completions
-  base_url: 'https://api.deepseek.com/v1',
+  base_url: LOCAL.base_url || 'https://api.deepseek.com/v1',
   // 真实可用的模型 id 是 deepseek-flash（即 DeepSeek-V4.1-Flash），支持图像输入；
   // 客户端里的 "V4.1 Flash High" 对应 effort=high（默认）。
-  model_name: 'deepseek-flash',
+  model_name: LOCAL.model_name || 'deepseek-flash',
   display_name: 'DeepSeek-V4.1-Flash · High',
   // 仓库里不放真实 Key。本地调试时新建 assets/config.local.js（已 gitignore）写入：
   //   window.SB_LOCAL_CONFIG = { api_key: 'sk-…' };
@@ -25,13 +25,13 @@ export const DEFAULT_MODEL_CONFIG = {
   max_tokens: 8192,
   effort: 'high',
   vision: true,
-  passcode: ''
+  passcode: LOCAL.passcode || ''
 };
 
 export const PROXY_PRESET = {
   label: '本站代理（无需自备 Key）',
   base_url: 'https://scriptbreaker-proxy.805352942.workers.dev/v1',
-  model_name: 'deepseek-flash',
+  model_name: LOCAL.model_name || 'deepseek-flash',
   vision: true,
   passcode: '白夜行'   // 口令只防脚本白嫖，前端可见，想更严就改 secret
 };
@@ -41,8 +41,8 @@ export const OFFICIAL_BASE = 'https://api.deepseek.com/v1';
 export const PROVIDER_PRESETS = {
   deepseek: {
     label: 'DeepSeek（官方）',
-    base_url: 'https://api.deepseek.com/v1',
-    model_name: 'deepseek-flash',
+    base_url: LOCAL.base_url || 'https://api.deepseek.com/v1',
+    model_name: LOCAL.model_name || 'deepseek-flash',
     vision: true
   },
   openai: {

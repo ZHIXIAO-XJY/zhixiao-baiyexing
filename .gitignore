@@ -10,3 +10,8 @@ Thumbs.db
 # 本地测试产物
 _*.png
 _*.html
+
+# 桌面版构建产物
+dist/
+node_modules/
+build/icon.png
