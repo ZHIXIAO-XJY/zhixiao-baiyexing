@@ -26,7 +26,8 @@ const state = {
   filter: 'all',
   query: '',
   selected: new Set(),
-  extras: null
+  extras: null,
+  queue: []
 };
 
 /* ---------------- 基础 UI ---------------- */
@@ -181,8 +182,10 @@ function bindVideoInputs() {
   dz.addEventListener('click', openPicker);
   dz.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') openPicker(); });
   input.addEventListener('change', () => {
-    const f = input.files?.[0];
-    if (f) setVideo(f, f.name);
+    const files = [...(input.files || [])];
+    if (!files.length) return;
+    if (files.length === 1) return setVideo(files[0], files[0].name);
+    addToQueue(files);
   });
 
   ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, (e) => {
@@ -194,9 +197,10 @@ function bindVideoInputs() {
     dz.classList.remove('hot');
   }));
   dz.addEventListener('drop', (e) => {
-    const f = e.dataTransfer?.files?.[0];
-    if (f && f.type.startsWith('video/')) setVideo(f, f.name);
-    else toast('请拖入视频文件', true);
+    const files = [...(e.dataTransfer?.files || [])].filter(f => f.type.startsWith('video/'));
+    if (!files.length) return toast('请拖入视频文件', true);
+    if (files.length === 1) return setVideo(files[0], files[0].name);
+    addToQueue(files);
   });
 
   $('#btn-load-url').addEventListener('click', () => {
@@ -315,7 +319,7 @@ async function run() {
             { role: 'assistant', content: text.slice(0, 400) },
             { role: 'user', content: '上一条不是合法 JSON 数组。请只输出 JSON 数组，长度与镜头数一致，不要任何解释。' }
           ]);
-          const r2 = await chat({ ...cfg, effort: 'low', max_tokens: Math.max(8192, cfg.max_tokens || 0) }, retryMsgs, state.abort.signal);
+          const r2 = await chat({ ...cfg, effort: 'high', max_tokens: Math.max(16384, cfg.max_tokens || 0) }, retryMsgs, state.abort.signal);
           text = r2.text;
           usage = r2.usage;
           parsed = parseShotJSON(text, batch.length);
@@ -334,6 +338,27 @@ async function run() {
       }
       setProgress(48 + (doneBatches / batches.length) * 50, `模型分析 ${doneBatches}/${batches.length}`);
       render();
+    }
+
+    // 质量兜底：字段为空或解析失败的镜头，逐镜用最高档重跑
+    if (!state.abort.signal.aborted) {
+      const weak = shots.filter(s =>
+        !(s.visual || '').trim() || (s.visual || '').includes('解析失败') || !(s.camera || '').trim()
+      );
+      if (weak.length) {
+        log(`有 ${weak.length} 个镜头字段为空，逐镜重跑（effort=max）`);
+        for (const s of weak) {
+          if (state.abort.signal.aborted) break;
+          try {
+            const msgs = buildBatchMessages([s], { vision: cfg.vision, lang: 'zh', castHint });
+            const r = await chat({ ...cfg, effort: 'max', max_tokens: 16384 }, msgs, state.abort.signal);
+            Object.assign(s, parseShotJSON(r.text, 1)[0]);
+            render();
+          } catch (e) {
+            log(`镜头 ${s.id} 重跑失败：${e.message}`, 'err');
+          }
+        }
+      }
     }
 
     for (const s of shots) {
@@ -381,6 +406,67 @@ async function retryOnce(fn) {
     await new Promise(r => setTimeout(r, 900));
     return fn();
   }
+}
+
+/* ---------------- 多文件队列 ---------------- */
+function addToQueue(files) {
+  for (const f of files) state.queue.push({ file: f, name: f.name, status: 'pending' });
+  renderQueue();
+  toast(`已加入 ${files.length} 个文件`);
+}
+
+const QSTATUS = { pending: '等待', running: '处理中', done: '完成', error: '失败' };
+
+function renderQueue() {
+  const box = $('#queue');
+  if (!box) return;
+  if (!state.queue.length) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = state.queue.map((q, i) => `
+    <div class="qrow ${q.status}">
+      <span class="qname" title="${esc(q.name)}">${esc(q.name)}</span>
+      <span class="qstat">${QSTATUS[q.status] || q.status}</span>
+      ${q.status === 'done' ? `<button class="link" data-dl="${i}" type="button">下载</button>` : ''}
+    </div>`).join('');
+  box.querySelectorAll('[data-dl]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const q = state.queue[Number(btn.dataset.dl)];
+      if (q?.md) download(q.name.replace(/\.[^.]+$/, '') + '_storyboard.md', q.md, 'text/markdown;charset=utf-8');
+    });
+  });
+  const pending = state.queue.filter(q => q.status === 'pending').length;
+  $('#btn-queue').hidden = pending === 0;
+  $('#btn-queue').textContent = pending ? `跑队列（${pending}）` : '跑队列';
+}
+
+async function runQueue() {
+  if (state.running) return;
+  const items = state.queue.filter(q => q.status === 'pending');
+  if (!items.length) return toast('没有待处理的文件', true);
+  for (const q of items) {
+    if (!state.cfg.api_key) { toast('先去「模型设置」填 API Key', true); break; }
+    q.status = 'running';
+    renderQueue();
+    try {
+      await setVideo(q.file, q.name);
+      await run();
+      if (state.shots.length) {
+        q.md = toMarkdown(exportMeta(), state.shots, state.extras);
+        q.shots = state.shots.length;
+        q.status = 'done';
+      } else {
+        q.status = 'error';
+      }
+    } catch (e) {
+      q.status = 'error';
+      q.error = e.message;
+      log(`队列：${q.name} 失败 ${e.message}`, 'err');
+    }
+    renderQueue();
+  }
+  toast('队列处理完毕');
+  const done = state.queue.filter(q => q.status === 'done').length;
+  if (done) log(`队列完成 ${done} 个文件，可在左侧逐条下载`, 'ok');
 }
 
 /* ---------------- 过滤与统计 ---------------- */
@@ -992,6 +1078,7 @@ function boot() {
   $('#btn-sel-clear').addEventListener('click', clearSelection);
   $('#btn-batch-apply').addEventListener('click', applyBatch);
   $('#btn-regen-extras').addEventListener('click', regenExtras);
+  $('#btn-queue').addEventListener('click', runQueue);
 
   document.querySelectorAll('#filter-seg button').forEach(btn => {
     btn.addEventListener('click', () => {

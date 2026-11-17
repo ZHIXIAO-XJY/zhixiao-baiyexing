@@ -54,8 +54,10 @@
       </svg>
       <p class="dz-title">拖入视频，或点击选择</p>
       <p class="dz-sub">mp4 / webm / mov · 在本机解码，不上传</p>
-      <input type="file" id="video-upload" accept="video/*" hidden />
+      <input type="file" id="video-upload" accept="video/*" multiple hidden />
     </div>
+
+    <div id="queue" class="queue" hidden></div>
 
     <div class="url-row">
       <input id="video-url" type="url" placeholder="或粘贴视频直链 https://…" />
@@ -127,6 +129,7 @@
 
     <div class="actions">
       <button id="btn-run" class="btn primary" type="button" disabled>开始拆解</button>
+      <button id="btn-queue" class="btn" type="button" hidden>跑队列</button>
       <button id="btn-cancel" class="btn" type="button" hidden>停止</button>
     </div>
 

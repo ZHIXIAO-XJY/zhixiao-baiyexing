@@ -494,3 +494,12 @@ textarea{resize:vertical;min-height:96px;line-height:1.55;font-size:12.5px}
 .drow{display:flex;gap:8px;font-size:11.5px;line-height:1.55;color:var(--txt-2)}
 .drow i{flex:none;width:26px;font-style:normal;color:var(--txt-3);font-size:10.5px;line-height:1.7}
 .drow span{flex:1;min-width:0}
+
+/* ---------- 多文件队列 ---------- */
+.queue{border:1px solid var(--line);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:6px;max-height:150px;overflow:auto;background:rgba(0,0,0,.2)}
+.qrow{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--txt-2)}
+.qname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qstat{flex:none;font:600 10px/1 var(--mono);padding:4px 7px;border-radius:999px;border:1px solid var(--line);color:var(--txt-3)}
+.qrow.running .qstat{color:var(--acc);border-color:rgba(95,208,255,.5);background:var(--acc-soft)}
+.qrow.done .qstat{color:var(--ok);border-color:rgba(74,222,128,.4);background:rgba(74,222,128,.08)}
+.qrow.error .qstat{color:var(--err);border-color:rgba(255,107,122,.4)}
