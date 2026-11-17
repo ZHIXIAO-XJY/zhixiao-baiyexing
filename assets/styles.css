@@ -461,3 +461,21 @@ textarea{resize:vertical;min-height:96px;line-height:1.55;font-size:12.5px}
 
 /* 质检弹窗不显示“复制/下载” */
 #modal[data-mode="qc"] .drawer-actions{display:none}
+
+/* ---------- 档案与结构 ---------- */
+.extras{
+  border:1px solid rgba(139,123,255,.22);border-radius:14px;
+  background:linear-gradient(180deg,rgba(139,123,255,.08),rgba(139,123,255,.02));
+  padding:12px 14px;margin:0 0 12px;
+}
+.extras-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.extras-head h3{margin:0;font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--txt-2)}
+.ex-grid{display:grid;grid-template-columns:1.1fr 1.1fr 1fr;gap:16px}
+.ex-col h4{margin:0 0 6px;font-size:11px;color:var(--txt-3);letter-spacing:.4px;text-transform:uppercase}
+.ex-col ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.ex-col li{font-size:11.8px;line-height:1.55;color:var(--txt-2)}
+.ex-col li b{color:var(--txt);font-weight:700}
+.ex-col li code{font:11px/1 var(--mono);color:var(--acc);margin-right:6px}
+.ex-col li span[contenteditable]{color:var(--txt-2)}
+.ex-col li span[contenteditable]:focus{color:var(--txt)}
+@media (max-width:1000px){.ex-grid{grid-template-columns:1fr}}

@@ -26,20 +26,44 @@ export function hasExt(shots) {
   return shots.some(s => EXT_KEYS.some(k => (s[k] || '').trim()));
 }
 
-export function toMarkdown(meta, shots) {
+export function toMarkdown(meta, shots, extras = null) {
   const ext = hasExt(shots);
   const head = [
     '# Video Script Analysis Report',
+    extras?.title ? `\n> **${extras.title}**\n` : '',
     '',
     `**Source File:** ${meta.filename || '(unknown)'}`,
     `**Generated Time:** ${meta.generatedAt || ''}`,
     `**Model Used:** ${meta.model || ''}`,
     `**Duration:** ${meta.duration ? tc(meta.duration) : '—'}　**Resolution:** ${meta.width && meta.height ? `${meta.width}×${meta.height}` : '—'}　**Shots:** ${shots.length}`,
     '',
+  ];
+
+  if (extras?.characters?.length) {
+    head.push('## 角色档案', '', '| 角色 | 身份 | 外形与识别要素 | 说话特点 |', '| :--- | :--- | :--- | :--- |');
+    for (const c of extras.characters) {
+      head.push(`| ${cell(c.name)} | ${cell(c.role)} | ${cell(c.profile)} | ${cell(c.tone)} |`);
+    }
+    head.push('');
+  }
+  if (extras?.structure?.length) {
+    head.push('## 剧情结构', '', '| 时间 | 段落 | 说明 |', '| :--- | :--- | :--- |');
+    for (const s of extras.structure) {
+      head.push(`| ${cell(s.start)} - ${cell(s.end)} | ${cell(s.phase)} | ${cell(s.note)} |`);
+    }
+    head.push('');
+  }
+  if (extras?.notes?.length) {
+    head.push('## 表演与剪辑要点', '');
+    for (const n of extras.notes) head.push(`- ${n}`);
+    head.push('');
+  }
+
+  head.push(
     '| Shot ID | Timecode | Visual Description | Dialogue / Narration | Camera Movement | Audio / SFX |'
       + (ext ? ' Composition | Lighting | Eye Contact | Emotion Arc |' : ''),
     '| :--- | :--- | :--- | :--- | :--- | :--- |' + (ext ? ' :--- | :--- | :--- | :--- |' : ''),
-  ];
+  );
   for (const s of shots) {
     const row = [
       String(s.id).padStart(3, '0'),
@@ -73,7 +97,7 @@ export function toCSV(meta, shots) {
   return '\uFEFF' + rows.join('\r\n');
 }
 
-export function toJSON(meta, shots) {
+export function toJSON(meta, shots, extras = null) {
   return JSON.stringify({
     meta: {
       source: meta.filename || null,
@@ -84,6 +108,7 @@ export function toJSON(meta, shots) {
       height: meta.height,
       shots: shots.length
     },
+    ...(extras ? { extras } : {}),
     shots: shots.map(s => ({
       id: s.id,
       timecode: { start: tc(s.start), end: tc(s.end), startSec: s.start, endSec: s.end },

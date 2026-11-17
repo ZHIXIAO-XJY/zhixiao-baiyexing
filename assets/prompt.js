@@ -89,14 +89,8 @@ export function parseShotJSON(text, expected) {
   try {
     arr = JSON.parse(slice);
   } catch {
-    // 尝试补齐被截断的括号
-    let fixed = slice.replace(/,\s*$/, '');
-    const opens = (fixed.match(/\[/g) || []).length;
-    const closes = (fixed.match(/\]/g) || []).length;
-    fixed += ']'.repeat(Math.max(0, opens - closes));
-    if (!fixed.trim().endsWith(']')) fixed += ']';
     try {
-      arr = JSON.parse(fixed);
+      arr = JSON.parse(repairJSON(slice));
     } catch {
       // 最后兜底：逐个对象抢救
       const objs = [...slice.matchAll(/\{[\s\S]*?\}(?=\s*,?\s*\{|\s*\]|$)/g)].map(m => m[0]);
@@ -126,6 +120,25 @@ export function parseShotJSON(text, expected) {
     clean.push({ visual: '', dialogue: null, camera: '', audio: '', composition: '', lighting: '', gaze: null, emotion: '' });
   }
   return clean;
+}
+
+/** 补齐被截断的括号/引号 */
+export function repairJSON(s) {
+  const stack = [];
+  let inStr = false;
+  let esc = false;
+  for (const ch of s) {
+    if (esc) { esc = false; continue; }
+    if (ch === '\\') { esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === '{' || ch === '[') stack.push(ch);
+    else if (ch === '}' || ch === ']') stack.pop();
+  }
+  let out = s.replace(/,\s*$/, '');
+  if (inStr) out += '"';
+  while (stack.length) out += stack.pop() === '{' ? '}' : ']';
+  return out;
 }
 
 function str(v) {

@@ -1,0 +1,7 @@
+name = "scriptbreaker-proxy"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# 可选：限定只允许你的站点调用
+# [vars]
+# ALLOW_ORIGIN = "https://zhixiao-xjy.github.io"

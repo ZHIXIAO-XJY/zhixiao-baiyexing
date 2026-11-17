@@ -3,6 +3,7 @@ import { parseShotJSON, parseSubtitles, attachSubtitles } from './assets/prompt.
 import { toMarkdown, toCSV, toJSON, hasExt } from './assets/exporter.js';
 import { endpointFor, normalizeBase } from './assets/providers.js';
 import { renumber, mergeShots, splitShot, deleteShots, qcShots, autoFix } from './assets/qc.js';
+import { parseSummaryJSON, hasExtras, buildSummaryMessages } from './assets/summary.js';
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra = '') {
@@ -103,6 +104,33 @@ ok('质检发现空字段', qcShots(empty).some(i => i.msg.includes('运镜')));
 
 const fixed = autoFix([mk(1, 0, 12), mk(2, 10, 20)]);
 ok('自动修复重叠', fixed[1].start === fixed[0].end);
+
+console.log('\n[summary]');
+const sumText = '```json\n{"title":"夜巷认亲","characters":[{"name":"霍征","role":"男主","profile":"短发","tone":"低沉"}],"structure":[{"start":"00:00","end":"01:36","phase":"钩子","note":"认亲"}],"notes":["让外说惨"]}\n```';
+const ex = parseSummaryJSON(sumText);
+ok('汇总：去代码块', ex.title === '夜巷认亲');
+ok('汇总：角色字段', ex.characters.length === 1 && ex.characters[0].name === '霍征' && ex.characters[0].profile === '短发');
+ok('汇总：结构字段', ex.structure[0].phase === '钩子' && ex.structure[0].start === '00:00');
+ok('汇总：要点', ex.notes[0] === '让外说惨');
+ok('汇总：hasExtras', hasExtras(ex) === true && hasExtras(null) === false);
+
+const truncSum = parseSummaryJSON('{"characters":[{"name":"A"}]');
+ok('汇总：截断容错', truncSum.characters[0].name === 'A' && truncSum.structure.length === 0);
+
+const noName = parseSummaryJSON('{"characters":[{"role":"x"},{"name":"B"}]}');
+ok('汇总：丢弃无名角色', noName.characters.length === 1 && noName.characters[0].name === 'B');
+
+const msgs = buildSummaryMessages([{ start: 0, end: 13, visual: '巷子', dialogue: '台词' }]);
+ok('汇总：请求含镜头', msgs[1].content.includes('00:00-00:13') && msgs[1].content.includes('台词'));
+
+console.log('\n[exporter extras]');
+const md2 = toMarkdown(meta, demo, { title: 'T', characters: [{ name: '甲', role: 'r', profile: 'p', tone: 't' }], structure: [{ start: '00:00', end: '00:13', phase: '钩子', note: 'n' }], notes: ['要点'] });
+ok('md 含角色档案', md2.includes('## 角色档案') && md2.includes('| 甲 |'));
+ok('md 含结构', md2.includes('## 剧情结构') && md2.includes('钩子'));
+ok('md 含要点', md2.includes('## 表演与剪辑要点') && md2.includes('- 要点'));
+ok('md 含标题', md2.includes('**T**'));
+const js2 = JSON.parse(toJSON(meta, demo, { notes: ['x'] }));
+ok('json 含 extras', js2.extras && js2.extras.notes[0] === 'x');
 
 console.log(`\n结果：${pass} 通过 / ${fail} 失败\n`);
 process.exit(fail ? 1 : 0);

@@ -7,6 +7,7 @@ import { chat, testConnection } from './providers.js';
 import { buildBatchMessages, parseShotJSON, parseSubtitles, attachSubtitles } from './prompt.js';
 import { toMarkdown, toCSV, toJSON, download, hasExt } from './exporter.js';
 import { mergeShots, splitShot, deleteShots, qcShots, autoFix, renumber } from './qc.js';
+import { buildSummaryMessages, parseSummaryJSON, hasExtras } from './summary.js';
 
 const $ = (sel) => document.querySelector(sel);
 const LS_CFG = 'scriptbreaker.config.v1';
@@ -24,7 +25,8 @@ const state = {
   lastExport: null,
   filter: 'all',
   query: '',
-  selected: new Set()
+  selected: new Set(),
+  extras: null
 };
 
 /* ---------------- 基础 UI ---------------- */
@@ -324,6 +326,19 @@ async function run() {
     }
 
     render();
+
+    // 全片归纳：角色档案 / 剧情结构 / 要点（纯文本请求，便宜）
+    if (!state.abort.signal.aborted) {
+      try {
+        setProgress(97, '归纳角色与结构…');
+        const { text } = await chat(cfg, buildSummaryMessages(shots), state.abort.signal);
+        state.extras = parseSummaryJSON(text);
+        renderExtras();
+        log('角色档案与结构已生成', 'ok');
+      } catch (e) {
+        if (e.name !== 'AbortError') log(`档案生成失败：${e.message}`, 'err');
+      }
+    }
     setPhase('analyze', 'done');
     setProgress(100, '完成');
     log(`完成：${shots.length} 个镜头`, 'ok');
@@ -611,6 +626,58 @@ function esc(str) {
   return String(str || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+/* ---------------- 档案与结构 ---------------- */
+function renderExtras() {
+  const box = $('#extras');
+  const ex = state.extras;
+  if (!hasExtras(ex)) { box.hidden = true; return; }
+  box.hidden = false;
+  $('#extras-title').textContent = ex.title ? `档案与结构 · ${ex.title}` : '档案与结构';
+
+  const esc = (v) => String(v || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const chars = (ex.characters || []).map((c, i) => `
+    <li><b>${esc(c.name)}</b>${c.role ? `（${esc(c.role)}）` : ''}<br>
+      <span contenteditable="true" data-kind="char" data-i="${i}" data-f="profile">${esc(c.profile || '—')}</span><br>
+      <span contenteditable="true" data-kind="char" data-i="${i}" data-f="tone" style="color:var(--txt-3)">${esc(c.tone || '—')}</span>
+    </li>`).join('');
+  const struct = (ex.structure || []).map((x, i) => `
+    <li><code>${esc(x.start)}-${esc(x.end)}</code><b>${esc(x.phase)}</b><br>
+      <span contenteditable="true" data-kind="struct" data-i="${i}" data-f="note">${esc(x.note || '—')}</span>
+    </li>`).join('');
+  const notes = (ex.notes || []).map((n, i) => `
+    <li contenteditable="true" data-kind="note" data-i="${i}">${esc(n)}</li>`).join('');
+
+  $('#extras-body').innerHTML = `
+    <div class="ex-grid">
+      <div class="ex-col"><h4>角色档案（${(ex.characters || []).length}）</h4><ul>${chars || '<li>—</li>'}</ul></div>
+      <div class="ex-col"><h4>剧情结构</h4><ul>${struct || '<li>—</li>'}</ul></div>
+      <div class="ex-col"><h4>表演与剪辑要点</h4><ul>${notes || '<li>—</li>'}</ul></div>
+    </div>`;
+
+  $('#extras-body').querySelectorAll('[contenteditable]').forEach(el => {
+    el.addEventListener('blur', () => {
+      const kind = el.dataset.kind, i = Number(el.dataset.i), f = el.dataset.f, v = el.textContent.trim();
+      if (kind === 'char' && ex.characters?.[i]) ex.characters[i][f] = v;
+      else if (kind === 'struct' && ex.structure?.[i]) ex.structure[i][f] = v;
+      else if (kind === 'note' && ex.notes) ex.notes[i] = v;
+    });
+  });
+}
+
+async function regenExtras() {
+  if (!state.shots.length) return toast('还没有分镜', true);
+  if (!state.cfg.api_key) return toast('先去「模型设置」填 API Key', true);
+  try {
+    toast('正在归纳…');
+    const { text } = await chat(state.cfg, buildSummaryMessages(state.shots));
+    state.extras = parseSummaryJSON(text);
+    renderExtras();
+    toast('档案已更新');
+  } catch (e) {
+    toast(`失败：${e.message}`, true);
+  }
+}
+
 /* ---------------- 大图 ---------------- */
 function openLightbox(shot) {
   if (!shot.thumb) return;
@@ -638,7 +705,7 @@ function doExport(kind) {
   const meta = exportMeta();
   const base = (meta.filename || 'script').replace(/\.[^.]+$/, '') + '_storyboard';
   if (kind === 'md') {
-    const text = toMarkdown(meta, state.shots);
+    const text = toMarkdown(meta, state.shots, state.extras);
     state.lastExport = { name: `${base}.md`, text, mime: 'text/markdown;charset=utf-8' };
     download(state.lastExport.name, text, state.lastExport.mime);
   } else if (kind === 'csv') {
@@ -646,7 +713,7 @@ function doExport(kind) {
     state.lastExport = { name: `${base}.csv`, text, mime: 'text/csv;charset=utf-8' };
     download(state.lastExport.name, text, state.lastExport.mime);
   } else {
-    const text = toJSON(meta, state.shots);
+    const text = toJSON(meta, state.shots, state.extras);
     state.lastExport = { name: `${base}.json`, text, mime: 'application/json' };
     download(state.lastExport.name, text, state.lastExport.mime);
   }
@@ -655,7 +722,7 @@ function doExport(kind) {
 
 function preview() {
   if (!ensureShots()) return;
-  const text = toMarkdown(exportMeta(), state.shots);
+  const text = toMarkdown(exportMeta(), state.shots, state.extras);
   state.lastExport = { name: 'preview.md', text, mime: 'text/markdown;charset=utf-8' };
   $('#modal').dataset.mode = 'doc';
   $('#modal-title').textContent = `预览 · ${state.shots.length} 镜${hasExt(state.shots) ? '（含扩展字段）' : ''}`;
@@ -674,10 +741,29 @@ function loadDemo() {
     { id: 6, start: 81, end: 96, visual: '车走了，霍征一个人站在巷口，低头看身上的呢大衣，抬手把它脱下来。', dialogue: '当年你甩给我一句跟你没活路，我认了。', camera: '单人近景转中景，脱衣动作完整入画', audio: '雨停，远处车流声' }
   ];
   state.shots = demo;
+  state.extras = {
+    title: '夜巷认亲 · 刷子打脸',
+    characters: [
+      { name: '霍征', role: '男主 · 车队老板', profile: '短发、眉骨高；前段黑呢大衣，02:04 后换深灰牛仔夹克＋米色卫衣', tone: '命令句快、认罪句慢；情绪往下压' },
+      { name: '柳清禾', role: '女主 · 皮具手艺', profile: '酒红盘扣外套、长辫垂胸、耳后别笔；手上有裂口与冻疮', tone: '越说越硬，用干活的手说话' },
+      { name: '男孩', role: '霍家长子', profile: '军绿夹克、短发；语速快、爱抢话', tone: '仰头、皱眉，认亲靠喊' }
+    ],
+    structure: [
+      { start: '00:00', end: '01:36', phase: '夜巷认亲（钩子）', note: '货车险撞 → 孩子认出爸 → 报出妈妈名字' },
+      { start: '01:36', end: '02:06', phase: '打听与待命（信息差）', note: '大姐的嘴把女主的苦说透，车队就位揭底' },
+      { start: '02:06', end: '03:18', phase: '重逢对质（真相）', note: '翻旧账 → “你说什么” → 逼上船的真相' }
+    ],
+    notes: [
+      '让外人（大姐）说惨，当事人不自己诉苦',
+      '反派提出一个观众都算得清的亏本价，压价才成立',
+      '不辩解，直接演示——把“烂木头”原话还给反派'
+    ]
+  };
   state.meta = { filename: 'demo_鞋刷.mp4', duration: 448, width: 544, height: 960 };
   $('#video-meta').textContent = '演示数据 · 07:28 · 544×960';
   clearSelection();
   render();
+  renderExtras();
   toast('已载入演示数据');
 }
 
@@ -865,6 +951,7 @@ function boot() {
   $('#btn-batch').addEventListener('click', openBatch);
   $('#btn-sel-clear').addEventListener('click', clearSelection);
   $('#btn-batch-apply').addEventListener('click', applyBatch);
+  $('#btn-regen-extras').addEventListener('click', regenExtras);
 
   document.querySelectorAll('#filter-seg button').forEach(btn => {
     btn.addEventListener('click', () => {
