@@ -22,7 +22,7 @@ export const DEFAULT_MODEL_CONFIG = {
   //   window.SB_LOCAL_CONFIG = { api_key: 'sk-…' };
   api_key: LOCAL.api_key || '',
   temperature: 0.3,
-  max_tokens: 4096,
+  max_tokens: 8192,
   effort: 'high',
   vision: true
 };

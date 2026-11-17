@@ -4,10 +4,15 @@
  */
 
 export function buildSummaryMessages(shots, { lang = 'zh', castHint = '' } = {}) {
-  const lines = shots.map(s => {
+  // 镜头太多时等间隔抽样，避免提示词过长导致模型跑偏
+  const MAX = 60;
+  const pick = shots.length > MAX
+    ? shots.filter((_, i) => i % Math.ceil(shots.length / MAX) === 0).slice(0, MAX)
+    : shots;
+  const lines = pick.map(s => {
     const t = `[${mmss(s.start)}-${mmss(s.end)}]`;
-    const d = s.dialogue ? ` 台词：${s.dialogue}` : '';
-    return `${t} ${(s.visual || '').slice(0, 80)}${d}`;
+    const d = s.dialogue ? ` 台词：${s.dialogue.slice(0, 40)}` : '';
+    return `${t} ${(s.visual || '').slice(0, 60)}${d}`;
   }).join('\n');
 
   let system = [
@@ -24,7 +29,8 @@ export function buildSummaryMessages(shots, { lang = 'zh', castHint = '' } = {})
     '硬约束：',
     '- 角色名只用清单里出现过的称呼，不要编新角色；',
     '- 时间必须来自清单里的区间，不要杜撰；',
-    '- 信息不足就写「不确定」，不要编细节。',
+    '- 信息不足就写「不确定」，不要编细节；',
+    '- 角色最多 6 个、要点最多 6 条，整段输出不要超过 1200 字。',
     lang === 'zh' ? '用简体中文书写。' : 'Write in English.'
   ].join('\n');
 

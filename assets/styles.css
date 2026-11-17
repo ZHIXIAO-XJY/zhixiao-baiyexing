@@ -479,3 +479,18 @@ textarea{resize:vertical;min-height:96px;line-height:1.55;font-size:12.5px}
 .ex-col li span[contenteditable]{color:var(--txt-2)}
 .ex-col li span[contenteditable]:focus{color:var(--txt)}
 @media (max-width:1000px){.ex-grid{grid-template-columns:1fr}}
+
+/* ---------- 卡片详情 ---------- */
+.detail{margin-top:2px;border-top:1px dashed var(--line);padding-top:6px}
+.detail summary{
+  cursor:pointer;font-size:11px;color:var(--txt-3);letter-spacing:.3px;
+  list-style:none;display:flex;align-items:center;gap:5px;user-select:none;
+}
+.detail summary::-webkit-details-marker{display:none}
+.detail summary::before{content:"▸";font-size:10px;transition:transform .15s;color:var(--acc)}
+.detail[open] summary::before{transform:rotate(90deg)}
+.detail summary:hover{color:var(--txt-2)}
+.detail-rows{display:flex;flex-direction:column;gap:5px;margin-top:7px}
+.drow{display:flex;gap:8px;font-size:11.5px;line-height:1.55;color:var(--txt-2)}
+.drow i{flex:none;width:26px;font-style:normal;color:var(--txt-3);font-size:10.5px;line-height:1.7}
+.drow span{flex:1;min-width:0}

@@ -315,7 +315,7 @@ async function run() {
             { role: 'assistant', content: text.slice(0, 400) },
             { role: 'user', content: '上一条不是合法 JSON 数组。请只输出 JSON 数组，长度与镜头数一致，不要任何解释。' }
           ]);
-          const r2 = await chat(cfg, retryMsgs, state.abort.signal);
+          const r2 = await chat({ ...cfg, effort: 'low', max_tokens: Math.max(8192, cfg.max_tokens || 0) }, retryMsgs, state.abort.signal);
           text = r2.text;
           usage = r2.usage;
           parsed = parseShotJSON(text, batch.length);
@@ -346,7 +346,8 @@ async function run() {
     if (!state.abort.signal.aborted) {
       try {
         setProgress(97, '归纳角色与结构…');
-        const { text } = await chat(cfg, buildSummaryMessages(shots, { castHint }), state.abort.signal);
+        const { text } = await chat({ ...cfg, effort: 'low', max_tokens: 8192 },
+          buildSummaryMessages(shots, { castHint }), state.abort.signal);
         state.extras = parseSummaryJSON(text);
         renderExtras();
         log('角色档案与结构已生成', 'ok');
@@ -594,6 +595,16 @@ function render() {
           <span class="mchip"><b>运镜</b><span contenteditable="true" data-field="camera">${esc(s.camera || '—')}</span></span>
           <span class="mchip"><b>声音</b><span contenteditable="true" data-field="audio">${esc(s.audio || '—')}</span></span>
         </div>
+        ${hasShotDetail(s) ? `
+        <details class="detail">
+          <summary>详情 · 构图 / 光线 / 眼神 / 表情</summary>
+          <div class="detail-rows">
+            ${detailRow('构图', s.composition, 'composition')}
+            ${detailRow('光线', s.lighting, 'lighting')}
+            ${detailRow('眼神', s.gaze, 'gaze')}
+            ${detailRow('表情', s.emotion, 'emotion')}
+          </div>
+        </details>` : ''}
       </div>`;
 
     card.addEventListener('click', (e) => {
@@ -635,6 +646,15 @@ function render() {
   }
   list.appendChild(frag);
   updateSelBar();
+}
+
+function hasShotDetail(s) {
+  return ['composition', 'lighting', 'gaze', 'emotion'].some(k => (s[k] || '').trim());
+}
+
+function detailRow(label, value, field) {
+  if (!(value || '').trim()) return '';
+  return `<div class="drow"><i>${label}</i><span contenteditable="true" data-field="${field}">${esc(value)}</span></div>`;
 }
 
 function esc(str) {
@@ -684,7 +704,8 @@ async function regenExtras() {
   if (!state.cfg.api_key) return toast('先去「模型设置」填 API Key', true);
   try {
     toast('正在归纳…');
-    const { text } = await chat(state.cfg, buildSummaryMessages(state.shots, { castHint: ($('#cast-hint')?.value || '').trim() }));
+    const { text } = await chat({ ...state.cfg, effort: 'low', max_tokens: 8192 },
+      buildSummaryMessages(state.shots, { castHint: ($('#cast-hint')?.value || '').trim() }));
     state.extras = parseSummaryJSON(text);
     renderExtras();
     toast('档案已更新');
@@ -748,7 +769,11 @@ function preview() {
 /* ---------------- 演示数据 ---------------- */
 function loadDemo() {
   const demo = [
-    { id: 1, start: 0, end: 13, visual: '雨后的老巷，地面积水映着路灯。白色厢式货车横在巷中，司机跳下车指着车头前的两个孩子骂。男孩军绿夹克，女孩姜黄毛衣，背贴车厢不敢动。', dialogue: '谁家的野孩子，破车横在路中间，差点撵着你们，赶紧走开。', camera: '大远景起幅，切司机中景、孩子双人中景；机位始终高于孩子', audio: '雨滴声、引擎怠速、远处车流；无 BGM' },
+    { id: 1, start: 0, end: 13, visual: '雨后的老巷，地面积水映着路灯。白色厢式货车横在巷中，司机跳下车指着车头前的两个孩子骂。男孩军绿夹克，女孩姜黄毛衣，背贴车厢不敢动。', dialogue: '谁家的野孩子，破车横在路中间，差点撵着你们，赶紧走开。', camera: '大远景起幅，切司机中景、孩子双人中景；机位始终高于孩子', audio: '雨滴声、引擎怠速、远处车流；无 BGM',
+      composition: '司机居中偏右占主体，两个孩子在左前景形成过肩框架，白色车厢封住右侧边界',
+      lighting: '钠灯从右上方打下，额头与鼻梁有高光，下颌与颈部落影，整体偏冷青',
+      gaze: '司机的视线越过镜头压向两个孩子，停留约 3 秒',
+      emotion: '起：眉心拧成结 → 中：眼睛瞪圆、下颌前顶 → 末：嘴唇抿紧，维持凶狠' },
     { id: 2, start: 13, end: 20, visual: '霍征从暗处走出，黑色呢大衣、没打伞，肩头湿一片，站到孩子与司机之间。', dialogue: '住口。冲两个孩子耍横，你丢不丢人。', camera: '过肩双人中景，切正面近景', audio: '雨声持续，脚步踩水' },
     { id: 3, start: 20, end: 47, visual: '两个孩子一人一句往他跟前凑，女孩说照片，男孩说“你是我爸”，霍征往后退半步。', dialogue: '他跟妈枕头底下那张照片长得一模一样……叔叔你是我爸对不对。', camera: '孩子近景交替，穿插霍征反应近景；仰拍', audio: '雨声变轻，孩子声音发颤' },
     { id: 4, start: 47, end: 63, visual: '霍征蹲下来与孩子平视，问出“你们妈叫什么名字”。', dialogue: '南巷渠边修皮具做刷子的柳清禾。', camera: '蹲下后的平视双人中景', audio: '环境声压低，留白' },

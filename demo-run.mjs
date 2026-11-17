@@ -13,7 +13,7 @@ import { toMarkdown } from './assets/exporter.js';
 const ROOT = 'C:/Users/Administrator/Documents/deepseek-harness/default-workspace';
 const VIDEO = `${ROOT}/xwechat_files_placeholder`;
 const KEY_FILE = `${ROOT}/scriptbreaker/assets/config.local.js`;
-const OUT = path.join(`${ROOT}/vsre/_probe`, 'sample_run.md');
+const OUT = process.env.OUT || path.join(`${ROOT}/vsre/_probe`, 'sample_run.md');
 
 const keyMatch = /api_key:\s*'([^']+)'/.exec(fs.readFileSync(KEY_FILE, 'utf8'));
 const cfg = {
@@ -22,8 +22,8 @@ const cfg = {
   model_name: 'deepseek-flash',
   api_key: keyMatch ? keyMatch[1] : process.env.DS_KEY,
   temperature: 0.3,
-  max_tokens: 4096,
-  effort: 'high',
+  max_tokens: 8192,
+  effort: 'low',
   vision: true
 };
 if (!cfg.api_key) throw new Error('没有可用 Key');
@@ -81,8 +81,26 @@ for (let i = 0; i < shots.length; i += batchSize) {
   console.log(`  批 ${i / batchSize + 1}: ${Date.now() - t}ms, tokens ${usage?.total_tokens}, 首句「${(batch[0].visual || '').slice(0, 18)}…」`);
 }
 
-const { text: smText, usage: smUsage } = await chat(cfg, buildSummaryMessages(shots, { castHint }));
-const extras = parseSummaryJSON(smText);
+fs.writeFileSync(OUT.replace(/\.md$/, '') + '.shots.json', JSON.stringify(shots.map(s => ({ ...s, thumb: undefined })), null, 1));
+
+let extras = { title: '', characters: [], structure: [], notes: [] };
+try {
+  const sumCfg = { ...cfg, effort: 'low', max_tokens: 8192 };
+  let { text: smText, usage: smUsage } = await chat(sumCfg, buildSummaryMessages(shots, { castHint }));
+  let usedTokens = smUsage?.total_tokens || 0;
+  try { extras = parseSummaryJSON(smText); } catch (e) {
+    const retry = buildSummaryMessages(shots, { castHint }).concat([
+      { role: 'assistant', content: smText.slice(0, 300) },
+      { role: 'user', content: '上一条不是 JSON 对象。请只输出 JSON 对象，不要解释。' }
+    ]);
+    const r2 = await chat(sumCfg, retry);
+    usedTokens += r2.usage?.total_tokens || 0;
+    extras = parseSummaryJSON(r2.text);
+  }
+  tokens += usedTokens;
+} catch (e) {
+  console.log('汇总失败（不影响镜头表）：', e.message);
+}
 tokens += smUsage?.total_tokens || 0;
 console.log(`汇总：角色 ${extras.characters.length} · 结构 ${extras.structure.length} · 要点 ${extras.notes.length}`);
 

@@ -135,6 +135,7 @@ ok('md 含结构', md2.includes('## 剧情结构') && md2.includes('钩子'));
 ok('md 含要点', md2.includes('## 表演与剪辑要点') && md2.includes('- 要点'));
 ok('md 含标题', md2.includes('**T**'));
 const js2 = JSON.parse(toJSON(meta, demo, { notes: ['x'] }));
+ok('json extras 不影响 shots', js2.shots.length === 1);
 ok('json 含 extras', js2.extras && js2.extras.notes[0] === 'x');
 
 console.log(`\n结果：${pass} 通过 / ${fail} 失败\n`);
