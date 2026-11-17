@@ -911,7 +911,12 @@ function bindSettings() {
       $('#net-tip').hidden = true;
       fillSettingsForm();
       $('#settings-drawer').hidden = false;
-      toast('已切到官方接口，填自己的 Key 即可');
+      setTimeout(() => {
+        const el = $('#cfg-apikey');
+        el?.focus();
+        el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }, 80);
+      toast('已切到官方接口，粘贴 Key 后点保存');
     });
   }
   const tipClose = $('#net-tip-close');
