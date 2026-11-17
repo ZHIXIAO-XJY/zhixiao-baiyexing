@@ -1,5 +1,5 @@
 import { buildShots, fmtTime, pickInterval } from './assets/cv.js';
-import { parseShotJSON, parseSubtitles, attachSubtitles } from './assets/prompt.js';
+import { parseShotJSON, parseSubtitles, attachSubtitles, buildBatchMessages } from './assets/prompt.js';
 import { toMarkdown, toCSV, toJSON, hasExt } from './assets/exporter.js';
 import { endpointFor, normalizeBase } from './assets/providers.js';
 import { renumber, mergeShots, splitShot, deleteShots, qcShots, autoFix } from './assets/qc.js';
@@ -121,6 +121,11 @@ const noName = parseSummaryJSON('{"characters":[{"role":"x"},{"name":"B"}]}');
 ok('汇总：丢弃无名角色', noName.characters.length === 1 && noName.characters[0].name === 'B');
 
 const msgs = buildSummaryMessages([{ start: 0, end: 13, visual: '巷子', dialogue: '台词' }]);
+const msgsHint = buildSummaryMessages([{ start: 0, end: 1, visual: 'x' }], { castHint: '霍征＝男主' });
+ok('汇总：角色提示注入', msgsHint[0].content.includes('霍征＝男主'));
+
+const shotMsgs = buildBatchMessages([{ id: 1, start: 0, end: 5, thumb: null }], { vision: false, castHint: '柳清禾＝女主' });
+ok('镜头：角色提示注入', shotMsgs[0].content.includes('柳清禾＝女主'));
 ok('汇总：请求含镜头', msgs[1].content.includes('00:00-00:13') && msgs[1].content.includes('台词'));
 
 console.log('\n[exporter extras]');

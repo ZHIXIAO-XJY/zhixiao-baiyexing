@@ -3,7 +3,7 @@
  * 指令分层：角色 / 任务 / 字段定义 / 硬约束 / 输出格式
  */
 
-export function buildSystemPrompt({ vision, lang = 'zh' }) {
+export function buildSystemPrompt({ vision, lang = 'zh', castHint = '' }) {
   const langLine = lang === 'zh' ? '所有字段用简体中文书写。'
     : 'Write every field in English.';
 
@@ -31,11 +31,12 @@ export function buildSystemPrompt({ vision, lang = 'zh' }) {
     '- 台词只抄画面上真实出现的字；看不清就写 null，禁止编造。',
     '- 不确定的内容写“不确定”，不要编细节。',
     vision ? '- 你收到的图片就是该镜头的画面，请据此描述。' : '- 本次没有图片，只能依据镜头时长与用户提供的字幕做结构推断，画面描述要保守。',
+    castHint ? `【用户给的角色表】\n${castHint}\n→ 描述人物时优先使用这里的称呼，不要另起名字；表里没有的人物才用外形描述。` : '',
     langLine
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
-export function buildBatchMessages(shots, { vision, lang = 'zh', contextTail = '' }) {
+export function buildBatchMessages(shots, { vision, lang = 'zh', contextTail = '', castHint = '' }) {
   const parts = [{
     type: 'text',
     text: [
@@ -59,7 +60,7 @@ export function buildBatchMessages(shots, { vision, lang = 'zh', contextTail = '
   }
 
   return [
-    { role: 'system', content: buildSystemPrompt({ vision, lang }) },
+    { role: 'system', content: buildSystemPrompt({ vision, lang, castHint }) },
     { role: 'user', content: parts }
   ];
 }

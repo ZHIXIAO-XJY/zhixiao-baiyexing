@@ -250,6 +250,7 @@ async function run() {
   const interval = intervalSel === 'auto' ? pickInterval(dur) : Number(intervalSel);
   const batchSize = Number($('#frames-per-batch').value) || 6;
   const mergeShort = $('#merge-short').checked;
+  const castHint = ($('#cast-hint')?.value || '').trim();
 
   try {
     setPhase('detect', 'active');
@@ -302,9 +303,23 @@ async function run() {
       if (state.abort.signal.aborted) break;
       const t0 = performance.now();
       try {
-        const messages = buildBatchMessages(batch, { vision: cfg.vision, lang: 'zh', contextTail });
-        const { text, usage } = await retryOnce(() => chat(cfg, messages, state.abort.signal));
-        const parsed = parseShotJSON(text, batch.length);
+        const messages = buildBatchMessages(batch, { vision: cfg.vision, lang: 'zh', contextTail, castHint });
+        let { text, usage } = await retryOnce(() => chat(cfg, messages, state.abort.signal));
+        let parsed;
+        try {
+          parsed = parseShotJSON(text, batch.length);
+        } catch (parseErr) {
+          // 模型偶尔会回一段散文而不是 JSON：带着它的原文再要一次
+          log(`批次 ${doneBatches + 1} 返回不是 JSON，要求重发`, 'err');
+          const retryMsgs = messages.concat([
+            { role: 'assistant', content: text.slice(0, 400) },
+            { role: 'user', content: '上一条不是合法 JSON 数组。请只输出 JSON 数组，长度与镜头数一致，不要任何解释。' }
+          ]);
+          const r2 = await chat(cfg, retryMsgs, state.abort.signal);
+          text = r2.text;
+          usage = r2.usage;
+          parsed = parseShotJSON(text, batch.length);
+        }
         parsed.forEach((p, idx) => Object.assign(batch[idx], p));
         contextTail = (batch[batch.length - 1].visual || '').slice(0, 80);
         doneBatches++;
@@ -331,7 +346,7 @@ async function run() {
     if (!state.abort.signal.aborted) {
       try {
         setProgress(97, '归纳角色与结构…');
-        const { text } = await chat(cfg, buildSummaryMessages(shots), state.abort.signal);
+        const { text } = await chat(cfg, buildSummaryMessages(shots, { castHint }), state.abort.signal);
         state.extras = parseSummaryJSON(text);
         renderExtras();
         log('角色档案与结构已生成', 'ok');
@@ -669,7 +684,7 @@ async function regenExtras() {
   if (!state.cfg.api_key) return toast('先去「模型设置」填 API Key', true);
   try {
     toast('正在归纳…');
-    const { text } = await chat(state.cfg, buildSummaryMessages(state.shots));
+    const { text } = await chat(state.cfg, buildSummaryMessages(state.shots, { castHint: ($('#cast-hint')?.value || '').trim() }));
     state.extras = parseSummaryJSON(text);
     renderExtras();
     toast('档案已更新');

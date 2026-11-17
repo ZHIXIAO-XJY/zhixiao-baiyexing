@@ -3,14 +3,14 @@
  * 拆完镜头后，用一次纯文本请求把整片归纳出来（不发送图片，便宜）
  */
 
-export function buildSummaryMessages(shots, { lang = 'zh' } = {}) {
+export function buildSummaryMessages(shots, { lang = 'zh', castHint = '' } = {}) {
   const lines = shots.map(s => {
     const t = `[${mmss(s.start)}-${mmss(s.end)}]`;
     const d = s.dialogue ? ` 台词：${s.dialogue}` : '';
     return `${t} ${(s.visual || '').slice(0, 80)}${d}`;
   }).join('\n');
 
-  const system = [
+  let system = [
     '你是资深影视后期制作专家。用户会给你一份已经拆好的分镜头清单（时间、画面、台词）。',
     '',
     '请归纳三块内容，只输出 JSON 对象，不要 markdown 代码块、不要解释：',
@@ -27,6 +27,10 @@ export function buildSummaryMessages(shots, { lang = 'zh' } = {}) {
     '- 信息不足就写「不确定」，不要编细节。',
     lang === 'zh' ? '用简体中文书写。' : 'Write in English.'
   ].join('\n');
+
+  if (castHint) {
+    system += `\n\n【用户给的角色表】\n${castHint}\n→ characters 的 name 必须用这里的称呼。`;
+  }
 
   return [
     { role: 'system', content: system },
