@@ -1,7 +1,7 @@
 /**
  * app.js — ScriptBreaker 主逻辑
  */
-import { DEFAULT_MODEL_CONFIG, PROVIDER_PRESETS, DEMO_KEY } from './config.js';
+import { DEFAULT_MODEL_CONFIG, PROVIDER_PRESETS, PROXY_PRESET, DEMO_KEY } from './config.js';
 import { probe, detectCuts, buildShots, captureThumbs, pickInterval, seekTo, fmtShort, fmtTime } from './cv.js';
 import { chat, testConnection } from './providers.js';
 import { buildBatchMessages, parseShotJSON, parseSubtitles, attachSubtitles } from './prompt.js';
@@ -923,6 +923,16 @@ function bindSettings() {
     $('#key-warning').hidden = !(DEMO_KEY && state.cfg.api_key === DEMO_KEY);
     close();
     toast('配置已保存到本机');
+  });
+
+  $('#btn-use-proxy').addEventListener('click', () => {
+    $('#cfg-provider').value = 'deepseek';
+    $('#cfg-baseurl').value = PROXY_PRESET.base_url;
+    $('#cfg-model').value = PROXY_PRESET.model_name;
+    $('#cfg-apikey').value = 'proxy';
+    $('#cfg-vision').checked = true;
+    $('#cfg-effort').value = 'high';
+    toast('已填入本站代理，点「保存」生效');
   });
 
   $('#btn-reset-cfg').addEventListener('click', () => {

@@ -93,7 +93,12 @@ OpenAI 兼容只需填 Base URL + 模型名，Anthropic 走 `x-api-key` + `anthr
 1. **本地调试**：把 `assets/config.example.js` 复制成 `assets/config.local.js`，写入自己的 Key。
    该文件已在 `.gitignore` 里，不会被提交；页面启动时自动读取。
 2. **线上访客**：在「模型设置」里自己填 Key（存本机 `localStorage`）。
-3. **公开演示站**（推荐）：用一个 Cloudflare Worker 代理，Key 放服务端环境变量：
+3. **公开演示站**（推荐）：用一个 Cloudflare Worker 代理，Key 放服务端环境变量。
+
+   本站已部署一份：`https://scriptbreaker-proxy.805352942.workers.dev`，在「模型设置」里点 **「用本站代理」** 即填好（Base URL 带 `/v1`，API Key 填 `proxy` 即可）。
+
+   > ⚠️ `*.workers.dev` 在中国大陆被 DNS 污染，直连不通；国内访客需要绑自有域名，或把 `worker/worker.js` 部署到国内可访问的环境。详见 `worker/README.md`。
+
 
 ```js
 // worker.js —— 部署后把 Base URL 改成 https://<你的>.workers.dev/v1

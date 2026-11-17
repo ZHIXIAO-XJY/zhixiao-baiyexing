@@ -27,6 +27,13 @@ export const DEFAULT_MODEL_CONFIG = {
   vision: true
 };
 
+export const PROXY_PRESET = {
+  label: '本站代理（无需自备 Key）',
+  base_url: 'https://scriptbreaker-proxy.805352942.workers.dev/v1',
+  model_name: 'deepseek-flash',
+  vision: true
+};
+
 export const PROVIDER_PRESETS = {
   deepseek: {
     label: 'DeepSeek（官方）',
