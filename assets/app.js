@@ -19,6 +19,7 @@ const state = {
   videoUrl: null,
   meta: { filename: '', duration: 0, width: 0, height: 0 },
   shots: [],
+  file: null,
   subs: [],
   running: false,
   abort: null,
@@ -179,12 +180,14 @@ async function setVideo(src, filename) {
 function bindVideoInputs() {
   const dz = $('#dropzone');
   const input = $('#video-upload');
+  if (window.SB_NATIVE) $('#btn-local-asr').hidden = false;
   const openPicker = () => input.click();
 
   dz.addEventListener('click', openPicker);
   dz.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') openPicker(); });
   input.addEventListener('change', () => {
     const files = [...(input.files || [])];
+    state.file = files[0] || null;
     if (!files.length) return;
     if (files.length === 1) return setVideo(files[0], files[0].name);
     addToQueue(files);
@@ -408,6 +411,73 @@ async function retryOnce(fn) {
     await new Promise(r => setTimeout(r, 900));
     return fn();
   }
+}
+
+/* ---------------- 本地转写（桌面版） ---------------- */
+function encodeWav(channels, sampleRate) {
+  const data = channels[0];
+  const len = data.length;
+  const buf = new ArrayBuffer(44 + len * 2);
+  const view = new DataView(buf);
+  const str = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); view.setUint32(4, 36 + len * 2, true); str(8, 'WAVE');
+  str(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  str(36, 'data'); view.setUint32(40, len * 2, true);
+  let off = 44;
+  for (let i = 0; i < len; i++) {
+    const v = Math.max(-1, Math.min(1, data[i]));
+    view.setInt16(off, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+    off += 2;
+  }
+  return buf;
+}
+
+async function localTranscribe() {
+  if (!window.SB_NATIVE) return toast('本地转写只在桌面版可用', true);
+  if (!state.file) return toast('请先用「选择文件」加载视频（直链不支持本地转写）', true);
+  const btn = $('#btn-local-asr');
+  const status = $('#asr-status');
+  btn.disabled = true;
+  status.textContent = '解码音轨…';
+  try {
+    const arrayBuf = await state.file.arrayBuffer();
+    const ctx = new AudioContext();
+    const audio = await ctx.decodeAudioData(arrayBuf.slice(0));
+    const targetRate = 16000;
+    const off = new OfflineAudioContext(1, Math.ceil(audio.duration * targetRate), targetRate);
+    const src = off.createBufferSource();
+    src.buffer = audio; src.connect(off.destination); src.start();
+    const rendered = await off.startRendering();
+    await ctx.close();
+
+    status.textContent = `转写中（${Math.round(audio.duration)} 秒音频，本地 whisper）…`;
+    const unsub = window.SB_NATIVE.onProgress(({ percent }) => {
+      status.textContent = `转写中… ${percent}%`;
+    });
+    const { segments } = await window.SB_NATIVE.transcribe(encodeWav([rendered.getChannelData(0)], targetRate), { lang: 'zh' });
+    unsub();
+
+    state.subs = segments.map(s => ({ t: s.start, text: s.text }));
+    $('#subtitle-input').value = segments.map(s => `${fmtClock(s.start)} ${s.text}`).join('\n');
+    $('#sub-status').textContent = `${state.subs.length} 条`;
+    status.textContent = `完成：${segments.length} 段`;
+    if (state.shots.length) { state.shots = attachSubtitles(state.shots, state.subs); render(); }
+    toast(`本地转写完成，${segments.length} 段`);
+    if (state.subs.length) document.querySelector('#sub-wrap').hidden = false;
+  } catch (e) {
+    console.error(e);
+    status.textContent = `失败：${e.message}`;
+    toast(`转写失败：${e.message}`, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function fmtClock(sec) {
+  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 /* ---------------- 多文件队列 ---------------- */
@@ -1112,6 +1182,7 @@ function boot() {
   $('#btn-batch-apply').addEventListener('click', applyBatch);
   $('#btn-regen-extras').addEventListener('click', regenExtras);
   $('#btn-queue').addEventListener('click', runQueue);
+  $('#btn-local-asr').addEventListener('click', localTranscribe);
 
   document.querySelectorAll('#filter-seg button').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1146,6 +1217,16 @@ function boot() {
   window.addEventListener('offline', () => toast('网络已断开，模型调用不可用', true));
 
   log('就绪。加载视频 → 点「开始拆解」。没有 Key 可先点「演示数据」看界面。');
+
+  if (window.SB_NATIVE) {
+    log(`桌面版 ${window.SB_NATIVE.version || ''} · 本地转写可用`, 'ok');
+    window.SB_NATIVE.checkUpdate().then(r => {
+      if (r?.ok && r.latest && r.latest !== r.current) {
+        toast(`发现新版本 v${r.latest}（当前 v${r.current}）`);
+        log(`有新版本 v${r.latest}，下载：${r.url}`, 'ok');
+      }
+    }).catch(() => {});
+  }
 
   // 用的是本站代理？探测一下可达性，不通就给一条「切官方接口」的退路
   if ((state.cfg.base_url || '').includes('workers.dev')) {

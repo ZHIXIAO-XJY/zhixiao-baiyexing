@@ -15,3 +15,7 @@ _*.html
 dist/
 node_modules/
 build/icon.png
+
+# 团队内置 Key（绝不上仓）
+electron/team-config.json
+vendor/

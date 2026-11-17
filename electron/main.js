@@ -3,7 +3,9 @@
  * - 用自定义协议 app:// 提供静态文件（file:// 下 ES Module 会被 CORS 拦）
  * - 注入默认配置：团队开箱即用（走代理 + 口令）
  */
-const { app, BrowserWindow, protocol, net, shell, dialog } = require('electron');
+const { app, BrowserWindow, protocol, shell, ipcMain, dialog } = require('electron');
+const { spawn } = require('node:child_process');
+const os = require('node:os');
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
@@ -23,13 +25,33 @@ const MIME = {
   '.ico': 'image/x-icon'
 };
 
-// 团队默认配置：走 Cloudflare 代理，前端不持有真 Key
-const DESKTOP_CONFIG = {
-  api_key: 'proxy',
-  base_url: 'https://scriptbreaker-proxy.805352942.workers.dev/v1',
-  model_name: 'deepseek-flash',
-  passcode: '白夜行'
-};
+// 团队默认配置：优先读打包时生成的 team-config.json（内置 Key），否则回退到代理
+function loadTeamConfig() {
+  const candidates = [
+    path.join(__dirname, 'team-config.json'),
+    path.join(app.isPackaged ? process.resourcesPath : '', 'team-config.json')
+  ];
+  for (const f of candidates) {
+    try {
+      if (f && fs.existsSync(f)) {
+        const c = JSON.parse(fs.readFileSync(f, 'utf8'));
+        if (c && c.api_key) return c;
+      }
+    } catch { /* ignore */ }
+  }
+  return {
+    api_key: 'proxy',
+    base_url: 'https://scriptbreaker-proxy.805352942.workers.dev/v1',
+    model_name: 'deepseek-flash',
+    passcode: '白夜行'
+  };
+}
+const DESKTOP_CONFIG = loadTeamConfig();
+
+// 本地 whisper（随包分发）
+const vendorPath = (...p) => path.join(app.isPackaged ? process.resourcesPath : ROOT, 'vendor', ...p);
+const WHISPER_EXE = vendorPath('whisper', 'bin', 'whisper-cli.exe');
+const WHISPER_MODEL = vendorPath('whisper', 'models', 'ggml-small-q5_1.bin');
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
@@ -45,9 +67,10 @@ function createWindow() {
     title: 'ScriptBreaker',
     autoHideMenuBar: true,
     webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: false
     }
   });
 
@@ -97,6 +120,60 @@ function createWindow() {
     }
   });
 }
+
+/* ---------------- 本地转写 ---------------- */
+ipcMain.handle('asr:transcribe', async (event, wavBuffer, opts = {}) => {
+  if (!fs.existsSync(WHISPER_EXE)) throw new Error('未找到 whisper-cli.exe');
+  if (!fs.existsSync(WHISPER_MODEL)) throw new Error('未找到 whisper 模型');
+  const stamp = Date.now();
+  const wav = path.join(os.tmpdir(), `sb_${stamp}.wav`);
+  const out = path.join(os.tmpdir(), `sb_${stamp}`);
+  fs.writeFileSync(wav, Buffer.from(wavBuffer));
+
+  return new Promise((resolve, reject) => {
+    const threads = Math.max(2, Math.min(8, os.cpus().length - 1));
+    const args = ['-m', WHISPER_MODEL, '-f', wav, '-l', opts.lang || 'zh', '-oj', '-of', out, '-t', String(threads)];
+    const p = spawn(WHISPER_EXE, args, { windowsHide: true });
+    let stderr = '';
+    p.stderr.on('data', (d) => {
+      const txt = d.toString();
+      stderr += txt;
+      const m = /progress\s*=\s*(\d+)%/.exec(txt);
+      if (m) event.sender.send('asr:progress', { percent: Number(m[1]) });
+    });
+    p.on('error', reject);
+    p.on('close', (code) => {
+      try {
+        const json = JSON.parse(fs.readFileSync(`${out}.json`, 'utf8'));
+        const segments = (json.transcription || []).map(t => ({
+          start: +(t.offsets.from / 1000).toFixed(2),
+          end: +(t.offsets.to / 1000).toFixed(2),
+          text: String(t.text || '').trim()
+        })).filter(s => s.text);
+        resolve({ segments, elapsed: json.systeminfo ? undefined : undefined, code });
+      } catch (e) {
+        reject(new Error(`whisper 输出解析失败（exit ${code}）：${stderr.slice(-300)}`));
+      } finally {
+        setTimeout(() => { try { fs.unlinkSync(wav); } catch {} }, 2000);
+      }
+    });
+  });
+});
+
+/* ---------------- 版本检查 ---------------- */
+ipcMain.handle('app:check-update', async () => {
+  try {
+    const res = await fetch('https://api.github.com/repos/ZHIXIAO-XJY/zhixiao-baiyexing/releases/latest', {
+      headers: { Accept: 'application/vnd.github+json' }
+    });
+    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` };
+    const r = await res.json();
+    const latest = String(r.tag_name || '').replace(/^v/, '');
+    return { ok: true, current: app.getVersion(), latest, url: r.html_url };
+  } catch (e) {
+    return { ok: false, message: e.message };
+  }
+});
 
 app.whenReady().then(() => {
   protocol.handle('app', async (request) => {

@@ -35,6 +35,44 @@
 
 ## 1.5 桌面版（Windows）
 
+### v1.1.0 团队版（内置 Key + 本地 whisper）
+
+| 能力 | 说明 |
+|---|---|
+| 开箱即用 | 团队 Key 编进包内（`electron/team-config.json`，打包时注入，不上仓），打开即用 |
+| 本地转写 | 内置 whisper.cpp + `ggml-small-q5_1`（181 MB）：视频没字幕也能出台词 |
+| 本地音频 | 用 WebAudio 解码音轨 → 16k 单声道 WAV → whisper，无需 ffmpeg |
+| 版本检查 | 启动时对比公开 Release 的版本号，有新版本会提示 |
+| 体积 | 免安装 255 MB / 安装包 256 MB |
+
+> 含 Key 的包**只能内部传**，不要上传到公开 Release/网盘；公开分发请用不带 Key 的构建。
+
+### 构建
+
+```bash
+npm install
+# 团队版：先写 electron/team-config.json（api_key/base_url/model_name）
+npm run dist              # 或分步：
+#   electron-builder --win dir --config.win.signAndEditExecutable=false
+#   （等待 20s 让杀软扫描结束）
+#   rcedit dist/win-unpacked/ScriptBreaker.exe --set-icon build/icon.ico ...
+#   electron-builder --win nsis portable --prepackaged dist/win-unpacked
+```
+
+### 代码签名（待证书）
+
+electron-builder 原生支持，把证书给到环境变量即可，无需改代码：
+
+```bash
+set CSC_LINK=C:\path\to\cert.pfx
+set CSC_KEY_PASSWORD=证书密码
+npm run dist
+```
+
+签过名的包不会再弹 SmartScreen，也能做真正的静默自动更新。
+
+## 旧版说明
+
 团队直接用这个，不用装浏览器插件，也没有跨域限制：
 
 - 免安装：`ScriptBreaker 1.0.0.exe`

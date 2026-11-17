@@ -84,8 +84,10 @@
       <textarea id="subtitle-input" rows="6" placeholder="00:00:02 孩子都七个月了&#10;00:00:04 你俩离婚才半年&#10;…&#10;&#10;也支持 SRT：&#10;1&#10;00:00:02,000 --> 00:00:04,000&#10;孩子都七个月了"></textarea>
       <div class="row" style="margin-top:8px">
         <button id="btn-parse-sub" class="btn small" type="button">解析字幕</button>
+        <button id="btn-local-asr" class="btn small" type="button" hidden>本地转写（whisper）</button>
         <span class="hint">解析结果会按时间自动挂到镜头上</span>
       </div>
+      <p id="asr-status" class="hint"></p>
     </div>
 
     <div class="divider"></div>
